@@ -1,0 +1,41 @@
+name: Tests
+
+on:
+  workflow_call:
+    inputs:
+      python-versions:
+        description: 'Python versions matrix (JSON array string)'
+        required: false
+        default: '["3.10", "3.11", "3.12", "3.13", "3.14"]'
+        type: string
+      test-group:
+        description: 'pip install dependency group (e.g. "test")'
+        required: false
+        default: 'test'
+        type: string
+      test-command:
+        description: 'Test run command'
+        required: false
+        default: 'pytest --tb=short'
+        type: string
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJson(inputs.python-versions) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ matrix.python-version }}-
+      - run: pip install -e ".[${{ inputs.test-group }}]"
+      - run: ${{ inputs.test-command }}
