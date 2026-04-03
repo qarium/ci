@@ -3,8 +3,8 @@ name: Publish Release
 on:
   workflow_call:
     inputs:
-      source-paths:
-        description: 'Source paths for changelog diff (space-separated, e.g. "src/ docs/")'
+      src-package:
+        description: 'Package directory name (e.g. "qools")'
         required: true
         type: string
       python-version:
@@ -13,10 +13,10 @@ on:
         default: '3.12'
         type: string
     secrets:
-      pypi-token:
+      PYPI_API_TOKEN:
         description: 'PyPI API token'
         required: true
-      ai-api-key:
+      ZAI_TOKEN:
         description: 'API key for z.ai release notes generation'
         required: true
 
@@ -90,26 +90,34 @@ jobs:
         id: notes
         if: steps.meta.outputs.prev_tag != ''
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ai-api-key }}
+          ANTHROPIC_API_KEY: ${{ secrets.ZAI_TOKEN }}
           ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
           PREV_TAG: ${{ steps.meta.outputs.prev_tag }}
           NEW_TAG: ${{ steps.meta.outputs.new_tag }}
           REPO_NAME: ${{ github.event.repository.name }}
         run: |
-          # Collect changes
-          git log "$PREV_TAG"..HEAD --format="- %s" -- ${{ inputs.source-paths }} > /tmp/commits.txt
-          git diff --stat "$PREV_TAG" HEAD -- ${{ inputs.source-paths }} > /tmp/diff_stat.txt
-          git diff "$PREV_TAG" HEAD -- ${{ inputs.source-paths }} > /tmp/diff.txt
+          # Collect changes (only source code and docs)
+          git log "$PREV_TAG"..HEAD --format="- %s" -- ${{ inputs.src-package }}/ docs/ > /tmp/commits.txt
+          git diff --stat "$PREV_TAG" HEAD -- ${{ inputs.src-package }}/ docs/ > /tmp/diff_stat.txt
+          git diff "$PREV_TAG" HEAD -- ${{ inputs.src-package }}/ > /tmp/diff_code.txt
+          git diff "$PREV_TAG" HEAD -- docs/ > /tmp/diff_docs.txt
 
-          # Truncate diff if needed
-          if [ "$(wc -c < /tmp/diff.txt)" -gt 12000 ]; then
-            head -c 12000 /tmp/diff.txt > /tmp/diff_trimmed.txt
-            printf '\n... (truncated)' >> /tmp/diff_trimmed.txt
-            mv /tmp/diff_trimmed.txt /tmp/diff.txt
+          # Truncate code diff if needed
+          if [ "$(wc -c < /tmp/diff_code.txt)" -gt 8000 ]; then
+            head -c 8000 /tmp/diff_code.txt > /tmp/diff_code_trimmed.txt
+            printf '\n... (truncated)' >> /tmp/diff_code_trimmed.txt
+            mv /tmp/diff_code_trimmed.txt /tmp/diff_code.txt
+          fi
+
+          # Truncate docs diff if needed
+          if [ "$(wc -c < /tmp/diff_docs.txt)" -gt 4000 ]; then
+            head -c 4000 /tmp/diff_docs.txt > /tmp/diff_docs_trimmed.txt
+            printf '\n... (truncated)' >> /tmp/diff_docs_trimmed.txt
+            mv /tmp/diff_docs_trimmed.txt /tmp/diff_docs.txt
           fi
 
           # Check empty diff
-          if [ ! -s /tmp/diff.txt ]; then
+          if [ ! -s /tmp/diff_code.txt ] && [ ! -s /tmp/diff_docs.txt ]; then
             echo "No diff found, skipping release notes generation"
             echo "Release $NEW_TAG" > release_notes.md
             exit 0
@@ -130,23 +138,28 @@ jobs:
 
           commits = read('/tmp/commits.txt')
           stat = read('/tmp/diff_stat.txt')
-          diff = read('/tmp/diff.txt')
+          code_diff = read('/tmp/diff_code.txt')
+          docs_diff = read('/tmp/diff_docs.txt')
 
           parts = [
               f"You are a DevOps engineer for the {repo} project.",
               "Generate Release Notes in English by following these steps:\n",
-              "Step 1. Review commit messages.",
+              "Step 1. Read the documentation changes to understand context.",
+              "<docs_changes>",
+              docs_diff,
+              "</docs_changes>\n",
+              "Step 2. Review commit messages.",
               "<commits>",
               commits,
               "</commits>\n",
-              "Step 2. Review the code changes.",
+              "Step 3. Review the code changes.",
               "<diff_stats>",
               stat,
               "</diff_stats>",
               "<code_changes>",
-              diff,
+              code_diff,
               "</code_changes>\n",
-              f"Step 3. Generate Release Notes in this exact format:",
+              f"Step 4. Generate Release Notes in this exact format:",
               f"## What is new in {new_tag}\n",
               "### Features",
               "- description of new features and improvements\n",
@@ -187,7 +200,7 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          password: ${{ secrets.pypi-token }}
+          password: ${{ secrets.PYPI_API_TOKEN }}
           verbose: true
 
       - name: Push tag and create GitHub Release
