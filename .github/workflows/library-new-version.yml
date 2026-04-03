@@ -12,9 +12,6 @@ on:
         description: 'GitHub token with repo admin permissions'
         required: true
 
-permissions:
-  contents: write
-
 jobs:
   create_branch:
     runs-on: ubuntu-latest
