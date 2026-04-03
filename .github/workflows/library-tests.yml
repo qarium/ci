@@ -16,7 +16,7 @@ on:
       test-command:
         description: 'Test run command'
         required: false
-        default: 'pytest --tb=short'
+        default: 'pytest -v --tb=short'
         type: string
 
 jobs:
