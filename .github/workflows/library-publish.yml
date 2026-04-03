@@ -84,7 +84,6 @@ jobs:
 
       - name: Generate Release Notes
         id: notes
-        if: steps.meta.outputs.prev_tag != ''
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ZAI_TOKEN }}
           ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
@@ -92,11 +91,19 @@ jobs:
           NEW_TAG: ${{ steps.meta.outputs.new_tag }}
           REPO_NAME: ${{ github.event.repository.name }}
         run: |
+          # Determine diff base — for first release use initial commit
+          if [ -n "$PREV_TAG" ]; then
+            DIFF_BASE="$PREV_TAG"
+          else
+            DIFF_BASE=$(git rev-list --max-parents=0 HEAD)
+            echo "First release — using initial commit $DIFF_BASE as base"
+          fi
+
           # Collect changes (only source code and docs)
-          git log "$PREV_TAG"..HEAD --format="- %s" -- ${{ inputs.src-package }}/ docs/ > /tmp/commits.txt
-          git diff --stat "$PREV_TAG" HEAD -- ${{ inputs.src-package }}/ docs/ > /tmp/diff_stat.txt
-          git diff "$PREV_TAG" HEAD -- ${{ inputs.src-package }}/ > /tmp/diff_code.txt
-          git diff "$PREV_TAG" HEAD -- docs/ > /tmp/diff_docs.txt
+          git log "$DIFF_BASE"..HEAD --format="- %s" -- ${{ inputs.src-package }}/ docs/ > /tmp/commits.txt
+          git diff --stat "$DIFF_BASE" HEAD -- ${{ inputs.src-package }}/ docs/ > /tmp/diff_stat.txt
+          git diff "$DIFF_BASE" HEAD -- ${{ inputs.src-package }}/ > /tmp/diff_code.txt
+          git diff "$DIFF_BASE" HEAD -- docs/ > /tmp/diff_docs.txt
 
           # Truncate code diff if needed
           if [ "$(wc -c < /tmp/diff_code.txt)" -gt 8000 ]; then
