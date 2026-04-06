@@ -1,0 +1,52 @@
+name: Notify Release
+
+on:
+  workflow_call:
+    secrets:
+      TELEGRAM_TOKEN:
+        description: 'Telegram bot token'
+        required: true
+      TELEGRAM_CHAT_ID:
+        description: 'Telegram chat or channel ID'
+        required: true
+
+jobs:
+  telegram-notify:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Prepare message
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh release list --repo ${{ github.repository }} --limit 1 --json tagName --jq '.[0].tagName')
+          URL=$(gh release view "$TAG" --repo ${{ github.repository }} --json url --jq '.url')
+          BODY=$(gh release view "$TAG" --repo ${{ github.repository }} --json body --jq '.body')
+
+          BODY=$(echo "$BODY" \
+            | sed -E 's/^#{1,6} (.*)/<b>\1<\/b>/' \
+            | sed -E 's/^- /• /' \
+            | sed -E 's/`([^`]+)`/<code>\1<\/code>/' \
+            | sed '/^---$/d')
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Send Telegram Notification
+        uses: appleboy/telegram-action@v1.0.1
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: html
+          message: |
+            <a href="${{ steps.release.outputs.url }}"><b>🚀New Release: ${{ steps.release.outputs.tag }}</b></a>
+
+            ${{ steps.release.outputs.body }}
+
+            Author: @${{ github.actor }}
