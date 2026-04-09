@@ -185,7 +185,7 @@ jobs:
 
           # Run claude-code
           npx @anthropic-ai/claude-code -p "$(cat /tmp/prompt.txt)" \
-            --model glm-5.1 \
+            --model glm-4.7 \
             --output-format text \
             --dangerously-skip-permissions \
             > release_notes.md
