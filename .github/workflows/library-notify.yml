@@ -45,7 +45,7 @@ jobs:
           token: ${{ secrets.TELEGRAM_TOKEN }}
           format: html
           message: |
-            <a href="${{ steps.release.outputs.url }}"><b>🚀New Release: ${{ steps.release.outputs.tag }}</b></a>
+            <a href="${{ steps.release.outputs.url }}"><b>🚀New Release: ${{ github.event.repository.name }} ${{ steps.release.outputs.tag }}</b></a>
 
             ${{ steps.release.outputs.body }}
 
