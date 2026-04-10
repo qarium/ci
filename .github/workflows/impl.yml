@@ -1,0 +1,111 @@
+name: "Ralphex: Developer"
+
+on:
+  workflow_dispatch:
+#  push:
+#    branches:
+#      - '[0-9]+.[0-9]+.x'
+
+jobs:
+  ai-development:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ZAI_TOKEN }}
+      ANTHROPIC_BASE_URL: "https://api.z.ai/api/anthropic"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install ralphex
+        run: |
+          VER=$(curl -sL https://api.github.com/repos/umputun/ralphex/releases/latest | grep '"tag_name"' | head -1 | sed 's/.*"v\(.*\)".*/\1/')
+          curl -sL "https://github.com/umputun/ralphex/releases/download/v${VER}/ralphex_${VER}_linux_amd64.tar.gz" | tar xz -C /usr/local/bin ralphex
+
+      - name: Install claude-code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Create claude wrapper
+        run: |
+          cat > /usr/local/bin/claude-wrapper.sh << WRAPPER
+          #!/bin/bash
+          exec env \
+            ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
+            ANTHROPIC_BASE_URL="$ANTHROPIC_BASE_URL" \
+            claude "\$@"
+          WRAPPER
+          chmod +x /usr/local/bin/claude-wrapper.sh
+
+      - name: Create ralphex config
+        run: |
+          mkdir -p .ralphex
+          cat > .ralphex/config << 'CONFIG'
+          claude_command = claude-wrapper.sh
+          claude_args = --dangerously-skip-permissions --output-format stream-json --verbose
+          codex_enabled = false
+          CONFIG
+
+      - name: Configure Claude settings (Disable Attribution)
+        run: |
+          mkdir -p ~/.claude
+          cat > ~/.claude/settings.json << 'EOF'
+          {
+            "attribution": {
+              "commit": "",
+              "pr": ""
+            },
+            "env": {
+              "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.7",
+              "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5.1",
+              "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5.1"
+            }
+          }
+          EOF
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Resolve plan
+        run: |
+          PLAN=$(ls -t docs/plans/*.md 2>/dev/null | head -1)
+          if [ -z "$PLAN" ]; then
+            echo "::error::No plan files found in docs/plans/"
+            exit 1
+          fi
+          echo "PLAN=$PLAN" >> "$GITHUB_ENV"
+          echo "Using plan: $PLAN"
+
+      - name: Run ralphex
+        run: ralphex "$PLAN"
+
+      - name: Push and PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          PR_BRANCH="ai/${BRANCH}"
+
+          git checkout -B "$PR_BRANCH"
+
+          git add .
+          git commit -m "AI: implementation for $BRANCH" || echo "No changes to commit"
+
+          git push origin "$PR_BRANCH" --force
+          gh pr create \
+            --title "AI: implementation for $BRANCH" \
+            --body "Automated implementation from plan \`${PLAN}\`." \
+            --base "$BRANCH" \
+            --head "$PR_BRANCH" || echo "PR already exists"
