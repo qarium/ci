@@ -49,4 +49,4 @@ jobs:
 
             ${{ steps.release.outputs.body }}
 
-            Author: @${{ github.actor }}
+            Author: <a href="https://github.com/${{ github.actor }}">${{ github.actor }}</a>
