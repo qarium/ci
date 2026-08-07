@@ -27,6 +27,7 @@ jobs:
           BODY=$(gh release view "$TAG" --repo ${{ github.repository }} --json body --jq '.body')
 
           BODY=$(echo "$BODY" \
+            | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' \
             | sed -E 's/^#{1,6} (.*)/<b>\1<\/b>/' \
             | sed -E 's/^- /• /' \
             | sed -E 's/`([^`]+)`/<code>\1<\/code>/' \
