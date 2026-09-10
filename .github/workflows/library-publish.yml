@@ -105,19 +105,15 @@ jobs:
           git diff "$DIFF_BASE" HEAD -- ${{ inputs.src-package }}/ > /tmp/diff_code.txt
           git diff "$DIFF_BASE" HEAD -- docs/ > /tmp/diff_docs.txt
 
-          # Truncate code diff if needed
-          if [ "$(wc -c < /tmp/diff_code.txt)" -gt 8000 ]; then
-            head -c 8000 /tmp/diff_code.txt > /tmp/diff_code_trimmed.txt
-            printf '\n... (truncated)' >> /tmp/diff_code_trimmed.txt
-            mv /tmp/diff_code_trimmed.txt /tmp/diff_code.txt
-          fi
-
-          # Truncate docs diff if needed
-          if [ "$(wc -c < /tmp/diff_docs.txt)" -gt 4000 ]; then
-            head -c 4000 /tmp/diff_docs.txt > /tmp/diff_docs_trimmed.txt
-            printf '\n... (truncated)' >> /tmp/diff_docs_trimmed.txt
-            mv /tmp/diff_docs_trimmed.txt /tmp/diff_docs.txt
-          fi
+          # Truncate diffs if needed (character-safe: never split a UTF-8 sequence)
+          python3 << 'TRUNCEOF'
+          for path, limit in [('/tmp/diff_code.txt', 8000), ('/tmp/diff_docs.txt', 4000)]:
+              data = open(path, 'rb').read()
+              if len(data) > limit:
+                  trimmed = data[:limit].decode('utf-8', errors='ignore') + '\n... (truncated)'
+                  with open(path, 'w', encoding='utf-8') as f:
+                      f.write(trimmed)
+          TRUNCEOF
 
           # Check empty diff
           if [ ! -s /tmp/diff_code.txt ] && [ ! -s /tmp/diff_docs.txt ]; then
@@ -134,7 +130,7 @@ jobs:
 
           def read(path):
               try:
-                  with open(path) as f:
+                  with open(path, encoding='utf-8', errors='replace') as f:
                       return f.read()
               except FileNotFoundError:
                   return ""
